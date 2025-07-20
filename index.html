@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stickman Battle Arena</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <h1>Stickman Battle Arena</h1>
+        <div id="controls">
+            <div class="control-section">
+                <h3>Player 1 (Red Fighter)</h3>
+                <p>A/D - Move Left/Right</p>
+                <p>W - Jump</p>
+                <p>S - Attack (Combo Chain)</p>
+                <p>F - Block/Parry</p>
+                <p>E - Dash</p>
+                <p>Q - Special: Fireball</p>
+            </div>
+            <div class="control-section">
+                <h3>Player 2 (Blue Fighter)</h3>
+                <p>Arrow Keys - Move/Jump</p>
+                <p>Down Arrow - Attack (Combo Chain)</p>
+                <p>Right Ctrl - Block/Parry</p>
+                <p>/ (Slash) - Dash</p>
+                <p>Right Shift - Special: Teleport Slash</p>
+            </div>
+            <div class="control-section">
+                <h3>🏆 Advanced Mechanics</h3>
+                <p>🥊 Chain attacks for combo damage</p>
+                <p>🛡️ Block to reduce damage</p>
+                <p>⚡ Time blocks perfectly to parry</p>
+                <p>💨 Dash to evade attacks</p>
+                <p>⚔️ Pick up weapons for bonus damage</p>
+            </div>
+        </div>
+        
+        <div id="gameStats">
+            <div class="player-stats">
+                <div class="player-label">Player 1</div>
+                <div class="health-bar">
+                    <div id="player1Health" class="health-fill"></div>
+                </div>
+                <div class="energy-bar">
+                    <div id="player1Energy" class="energy-fill"></div>
+                </div>
+                <div class="stats-text">
+                    <span id="player1HealthText">100</span> HP | 
+                    <span id="player1EnergyText">100</span> EN
+                </div>
+            </div>
+            <div class="vs-indicator">VS</div>
+            <div class="player-stats">
+                <div class="player-label">Player 2</div>
+                <div class="health-bar">
+                    <div id="player2Health" class="health-fill"></div>
+                </div>
+                <div class="energy-bar">
+                    <div id="player2Energy" class="energy-fill"></div>
+                </div>
+                <div class="stats-text">
+                    <span id="player2HealthText">100</span> HP | 
+                    <span id="player2EnergyText">100</span> EN
+                </div>
+            </div>
+        </div>
+        
+        <canvas id="gameCanvas" width="1000" height="600"></canvas>
+        
+        <!-- NEW: Combat HUD for displaying combo info and cooldowns -->
+        <div class="combat-hud" id="combatHUD" style="display: none;">
+            <div id="player1Combo" class="combo-display" style="display: none;"></div>
+            <div id="weaponInfo" class="cooldown-display" style="display: none;"></div>
+            <div id="player2Combo" class="combo-display" style="display: none;"></div>
+        </div>
+        
+        <div id="gameOver" class="hidden">
+            <div id="gameOverMessage"></div>
+            <div id="gameOverStats"></div>
+            <button id="restartButton">Battle Again</button>
+        </div>
+        
+        <div id="audioControls">
+            <button id="muteButton">🔊 Sound</button>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
