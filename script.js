@@ -1,11 +1,4 @@
-/**
- * Stickman Battle Arena - Advanced Fighting Game
- * Features: Smooth animations, special powers, particle effects, sound effects
- */
 
-// ================================
-// PARTICLE SYSTEM
-// ================================
 class Particle {
     constructor(x, y, vx, vy, color, life, size = 3) {
         this.x = x;
@@ -40,9 +33,7 @@ class Particle {
     }
 }
 
-// ================================
-// AUDIO MANAGER
-// ================================
+
 class AudioManager {
     constructor() {
         this.sounds = {};
@@ -131,10 +122,68 @@ class SpecialPower {
 }
 
 // ================================
+// CHARACTER CLASSES
+// ================================
+class CharacterClass {
+    constructor(name, stats, specialMoves, description) {
+        this.name = name;
+        this.stats = stats;
+        this.specialMoves = specialMoves;
+        this.description = description;
+    }
+}
+
+const CHARACTER_CLASSES = {
+    warrior: new CharacterClass('Warrior', {
+        health: 120,
+        energy: 80,
+        speed: 5,
+        jumpPower: 16,
+        energyRegenRate: 0.4,
+        attackDamage: 1.2,
+        defense: 1.1
+    }, ['berserkerRage', 'groundSlam'], 'High health and defense, devastating melee attacks'),
+    
+    assassin: new CharacterClass('Assassin', {
+        health: 80,
+        energy: 120,
+        speed: 8,
+        jumpPower: 22,
+        energyRegenRate: 0.7,
+        attackDamage: 1.1,
+        defense: 0.9
+    }, ['shadowClone', 'poisonDart'], 'Fast and agile, stealth and poison specialist'),
+    
+    mage: new CharacterClass('Mage', {
+        health: 90,
+        energy: 140,
+        speed: 4,
+        jumpPower: 15,
+        energyRegenRate: 0.8,
+        attackDamage: 0.9,
+        defense: 0.8
+    }, ['arcaneOrb', 'manaShield'], 'High energy and magical prowess, arcane specialist'),
+    
+    monk: new CharacterClass('Monk', {
+        health: 100,
+        energy: 100,
+        speed: 6,
+        jumpPower: 18,
+        energyRegenRate: 0.5,
+        attackDamage: 1.0,
+        defense: 1.0
+    }, ['innerPeace', 'chiBlast'], 'Balanced stats, spiritual energy and healing focus')
+};
+
+// ================================
 // STICKMAN FIGHTER CLASS
 // ================================
 class StickmanFighter {
-    constructor(x, y, color, controls, facingDirection = 1) {
+    constructor(x, y, color, controls, facingDirection = 1, characterClass = 'monk') {
+        // Character class setup
+        this.characterClass = CHARACTER_CLASSES[characterClass];
+        this.classType = characterClass;
+        
         // Position and physics
         this.x = x;
         this.y = y;
@@ -142,16 +191,16 @@ class StickmanFighter {
         this.height = 70;
         this.velocityX = 0;
         this.velocityY = 0;
-        this.speed = 6;
-        this.jumpPower = 18;
+        this.speed = this.characterClass.stats.speed;
+        this.jumpPower = this.characterClass.stats.jumpPower;
         this.onGround = true;
 
-        // Combat stats
-        this.health = 100;
-        this.maxHealth = 100;
-        this.energy = 100;
-        this.maxEnergy = 100;
-        this.energyRegenRate = 0.5;
+        // Combat stats (based on character class)
+        this.health = this.characterClass.stats.health;
+        this.maxHealth = this.characterClass.stats.health;
+        this.energy = this.characterClass.stats.energy;
+        this.maxEnergy = this.characterClass.stats.energy;
+        this.energyRegenRate = this.characterClass.stats.energyRegenRate;
 
         // Visual properties
         this.color = color;
@@ -195,6 +244,15 @@ class StickmanFighter {
         this.specialPowers = this.createSpecialPowers();
         this.specialEffects = [];
 
+        // NEW: Class-specific special states
+        this.berserkerMode = 0;
+        this.berserkerDamageBoost = 1.0;
+        this.berserkerSpeedBoost = 1.0;
+        this.shadowClones = [];
+        this.manaShield = 0;
+        this.poisoned = 0;
+        this.poisonDamageTimer = 0;
+
         // NEW: Visual effects
         this.hitFlash = 0;
         this.trailParticles = [];
@@ -221,24 +279,298 @@ class StickmanFighter {
         this.facingSmooth = facingDirection;
     }
 
+    // NEW: Multiple special powers and selection
     createSpecialPowers() {
-        if (this.color === '#FF4444') {
-            // Player 1: Fireball
-            return {
-                fireball: new SpecialPower('Fireball', 40, 120, (caster, target, game) => {
-                    game.audioManager.play('special');
-                    this.createFireball(caster, game);
-                })
-            };
-        } else {
-            // Player 2: Teleport Slash
-            return {
-                teleportSlash: new SpecialPower('Teleport Slash', 50, 150, (caster, target, game) => {
-                    game.audioManager.play('special');
-                    this.performTeleportSlash(caster, target, game);
-                })
-            };
-        }
+        // Define available powers with unique class-specific abilities
+        const powers = {
+            // WARRIOR ABILITIES
+            berserkerRage: new SpecialPower('Berserker Rage', 60, 200, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Temporary massive damage boost and speed increase
+                caster.berserkerMode = 300; // Duration in frames
+                caster.berserkerDamageBoost = 2.0;
+                caster.berserkerSpeedBoost = 1.5;
+                game.addDamageText(caster.x + caster.width/2, caster.y - caster.height, 'BERSERKER!', '#FF0000');
+                
+                // Red rage aura
+                for (let i = 0; i < 30; i++) {
+                    game.particles.push(new Particle(
+                        caster.x + caster.width/2 + Math.cos(i/30 * Math.PI*2) * 40,
+                        caster.y - caster.height/2 + Math.sin(i/30 * Math.PI*2) * 40,
+                        (Math.random()-0.5)*6,
+                        (Math.random()-0.5)*6,
+                        '#FF0000', 60, 5
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 30;
+            }),
+            
+            groundSlam: new SpecialPower('Ground Slam', 45, 120, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Powerful ground slam that creates shockwaves
+                game.addScreenShake(20);
+                
+                // Damage all enemies in large radius
+                [game.player1, game.player2].forEach(p => {
+                    if (p !== caster) {
+                        const distance = Math.abs(p.x - caster.x);
+                        if (distance < 200) {
+                            const damage = 35 * (1 - distance/200) * caster.characterClass.stats.attackDamage;
+                            p.health -= damage;
+                            p.knockbackX = (p.x < caster.x ? -1 : 1) * 15;
+                            p.knockbackY = -12;
+                            game.addDamageText(p.x + p.width/2, p.y - p.height, `SLAM ${Math.floor(damage)}!`, '#8B4513');
+                        }
+                    }
+                });
+                
+                // Ground crack effect
+                for (let i = 0; i < 50; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = Math.random() * 150;
+                    game.particles.push(new Particle(
+                        caster.x + caster.width/2 + Math.cos(angle) * distance,
+                        game.groundY + Math.sin(angle) * 20,
+                        (Math.random()-0.5)*8,
+                        -Math.random()*5,
+                        '#8B4513', 40, 3
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 40;
+            }),
+
+            // ASSASSIN ABILITIES
+            shadowClone: new SpecialPower('Shadow Clone', 55, 180, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Create shadow clones that confuse and attack
+                caster.shadowClones = [];
+                for (let i = 0; i < 3; i++) {
+                    caster.shadowClones.push({
+                        x: caster.x + (Math.random()-0.5)*100,
+                        y: caster.y,
+                        life: 120,
+                        attackTimer: Math.random() * 60
+                    });
+                }
+                game.addDamageText(caster.x + caster.width/2, caster.y - caster.height, 'SHADOW CLONE!', '#9932CC');
+                
+                // Shadow particles
+                for (let i = 0; i < 20; i++) {
+                    game.particles.push(new Particle(
+                        caster.x + caster.width/2 + (Math.random()-0.5)*60,
+                        caster.y - caster.height/2 + (Math.random()-0.5)*60,
+                        (Math.random()-0.5)*8,
+                        (Math.random()-0.5)*8,
+                        '#9932CC', 30, 4
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 25;
+            }),
+
+            poisonDart: new SpecialPower('Poison Dart', 35, 100, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Fast poison projectile that deals damage over time
+                const dart = {
+                    x: caster.x + caster.width / 2,
+                    y: caster.y - caster.height / 2,
+                    vx: caster.facing * 12,
+                    vy: -2,
+                    size: 8,
+                    life: 100,
+                    maxLife: 100,
+                    damage: 15,
+                    poison: true,
+                    poisonDuration: 180,
+                    owner: caster
+                };
+                
+                game.projectiles.push(dart);
+                
+                // Green poison particles
+                for (let i = 0; i < 8; i++) {
+                    game.particles.push(new Particle(
+                        dart.x + (Math.random()-0.5)*15,
+                        dart.y + (Math.random()-0.5)*15,
+                        (Math.random()-0.5)*3,
+                        (Math.random()-0.5)*3,
+                        '#00FF00', 25, 2
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 20;
+            }),
+
+            // MAGE ABILITIES
+            arcaneOrb: new SpecialPower('Arcane Orb', 50, 140, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Slow but powerful homing orb
+                const orb = {
+                    x: caster.x + caster.width / 2,
+                    y: caster.y - caster.height / 2,
+                    vx: 0,
+                    vy: 0,
+                    size: 20,
+                    life: 200,
+                    maxLife: 200,
+                    damage: 40,
+                    homing: true,
+                    target: target,
+                    owner: caster
+                };
+                
+                game.projectiles.push(orb);
+                
+                // Magical sparkles
+                for (let i = 0; i < 15; i++) {
+                    game.particles.push(new Particle(
+                        orb.x + (Math.random()-0.5)*25,
+                        orb.y + (Math.random()-0.5)*25,
+                        (Math.random()-0.5)*4,
+                        (Math.random()-0.5)*4,
+                        '#9966FF', 40, 3
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 35;
+            }),
+
+            manaShield: new SpecialPower('Mana Shield', 40, 160, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Absorbs damage using energy instead of health
+                caster.manaShield = 240; // Duration in frames
+                game.addDamageText(caster.x + caster.width/2, caster.y - caster.height, 'MANA SHIELD!', '#00BFFF');
+                
+                // Blue shield particles
+                for (let i = 0; i < 25; i++) {
+                    const angle = i / 25 * Math.PI * 2;
+                    game.particles.push(new Particle(
+                        caster.x + caster.width/2 + Math.cos(angle) * 50,
+                        caster.y - caster.height/2 + Math.sin(angle) * 50,
+                        Math.cos(angle) * 2,
+                        Math.sin(angle) * 2,
+                        '#00BFFF', 50, 4
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 30;
+            }),
+
+            // MONK ABILITIES
+            innerPeace: new SpecialPower('Inner Peace', 45, 200, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Restores health and energy while becoming briefly invulnerable
+                const healAmount = 50;
+                const energyAmount = 40;
+                caster.health = Math.min(caster.maxHealth, caster.health + healAmount);
+                caster.energy = Math.min(caster.maxEnergy, caster.energy + energyAmount);
+                caster.invulnerabilityFrames = 60;
+                
+                game.addDamageText(caster.x + caster.width/2, caster.y - caster.height, 'INNER PEACE!', '#FFD700');
+                
+                // Golden healing aura
+                for (let i = 0; i < 20; i++) {
+                    const angle = i / 20 * Math.PI * 2;
+                    game.particles.push(new Particle(
+                        caster.x + caster.width/2 + Math.cos(angle) * 30,
+                        caster.y - caster.height/2 + Math.sin(angle) * 30,
+                        Math.cos(angle) * 3,
+                        Math.sin(angle) * 3,
+                        '#FFD700', 60, 4
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 40;
+            }),
+
+            chiBlast: new SpecialPower('Chi Blast', 35, 110, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Energy wave that travels through enemies
+                const blast = {
+                    x: caster.x + caster.width / 2,
+                    y: caster.y - caster.height / 2,
+                    vx: caster.facing * 6,
+                    vy: 0,
+                    size: 25,
+                    life: 150,
+                    maxLife: 150,
+                    damage: 25,
+                    piercing: true,
+                    owner: caster
+                };
+                
+                game.projectiles.push(blast);
+                
+                // Chi energy particles
+                for (let i = 0; i < 12; i++) {
+                    game.particles.push(new Particle(
+                        blast.x + (Math.random()-0.5)*20,
+                        blast.y + (Math.random()-0.5)*20,
+                        (Math.random()-0.5)*5,
+                        (Math.random()-0.5)*5,
+                        '#FFA500', 35, 3
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 25;
+            }),
+
+            // LEGACY ABILITIES (kept for compatibility)
+            fireball: new SpecialPower('Fireball', 40, 120, (caster, target, game) => {
+                game.audioManager.play('special');
+                this.createFireball(caster, game);
+            }),
+            teleportSlash: new SpecialPower('Teleport Slash', 50, 150, (caster, target, game) => {
+                game.audioManager.play('special');
+                this.performTeleportSlash(caster, target, game);
+            }),
+            shockwave: new SpecialPower('Shockwave', 35, 100, (caster, target, game) => {
+                game.audioManager.play('special');
+                // Area knockback and damage
+                [game.player1, game.player2].forEach(p => {
+                    if (p !== caster && Math.abs(p.x - caster.x) < 120) {
+                        p.health -= 20 * caster.characterClass.stats.attackDamage;
+                        p.knockbackX = (p.x < caster.x ? -1 : 1) * 12;
+                        p.knockbackY = -10;
+                        game.addDamageText(p.x + p.width/2, p.y - p.height, 'SHOCK!', '#FF00FF');
+                    }
+                });
+                // Visual effect
+                for (let i = 0; i < 20; i++) {
+                    game.particles.push(new Particle(
+                        caster.x + caster.width/2 + Math.cos(i/20 * Math.PI*2) * 60,
+                        caster.y - caster.height/2 + Math.sin(i/20 * Math.PI*2) * 30,
+                        (Math.random()-0.5)*8,
+                        (Math.random()-0.5)*8,
+                        '#FF00FF', 30, 4
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 30;
+            }),
+            heal: new SpecialPower('Heal', 30, 180, (caster, target, game) => {
+                game.audioManager.play('special');
+                const healAmount = 40 * (caster.characterClass.stats.attackDamage || 1);
+                caster.health = Math.min(caster.maxHealth, caster.health + healAmount);
+                game.addDamageText(caster.x + caster.width/2, caster.y - caster.height, `+${Math.floor(healAmount)}`, '#00FF00');
+                for (let i = 0; i < 10; i++) {
+                    game.particles.push(new Particle(
+                        caster.x + caster.width/2 + (Math.random()-0.5)*30,
+                        caster.y - caster.height/2 + (Math.random()-0.5)*30,
+                        (Math.random()-0.5)*4,
+                        (Math.random()-0.5)*4,
+                        '#00FF00', 25, 3
+                    ));
+                }
+                this.state = 'special';
+                this.attackDuration = 20;
+            })
+        };
+        // Character class-based selection
+        this.selectedSpecial = this.characterClass.specialMoves[0];
+        return powers;
     }
 
     createFireball(caster, game) {
@@ -365,6 +697,9 @@ class StickmanFighter {
             this.hitFlash -= 0.1;
         }
 
+        // NEW: Update class-specific special states
+        this.updateSpecialStates();
+
         // Update dash cooldown
         if (this.dashCooldown > 0) {
             this.dashCooldown -= 16;
@@ -446,13 +781,11 @@ class StickmanFighter {
     handleInput(keys) {
         // Blocking
         this.blocking = keys[this.controls.block] && this.onGround && !this.attacking;
-        
         // Parrying (precise timing block)
         if (keys[this.controls.block] && !this.wasBlocking && this.onGround) {
             this.parryWindow = 200; // 200ms parry window
         }
         this.wasBlocking = keys[this.controls.block];
-
         // Dashing
         if (keys[this.controls.dash] && this.dashCooldown <= 0 && !this.isDashing && this.energy >= 20) {
             this.isDashing = true;
@@ -461,29 +794,24 @@ class StickmanFighter {
             this.energy -= 20;
             this.state = 'dashing';
         }
-
         // Movement (disabled during dash and attack)
         let moving = false;
         const moveAcceleration = 1.2; // Smoother acceleration
-        const maxMoveSpeed = this.speed;
-        
+        const maxMoveSpeed = this.speed * this.berserkerSpeedBoost;
         if (!this.isDashing && !this.attacking) {
             if (keys[this.controls.left]) {
-                // Gradual acceleration instead of instant speed
                 this.velocityX -= moveAcceleration;
                 if (this.velocityX < -maxMoveSpeed) this.velocityX = -maxMoveSpeed;
                 this.facing = -1;
                 moving = true;
             }
             if (keys[this.controls.right]) {
-                // Gradual acceleration instead of instant speed
                 this.velocityX += moveAcceleration;
                 if (this.velocityX > maxMoveSpeed) this.velocityX = maxMoveSpeed;
                 this.facing = 1;
                 moving = true;
             }
         }
-
         // Update state based on movement
         if (this.blocking) {
             this.state = 'blocking';
@@ -494,22 +822,28 @@ class StickmanFighter {
         } else if (!moving && this.onGround && this.state !== 'attacking' && this.state !== 'special') {
             this.state = 'idle';
         }
-
         // Jumping (disabled during block and dash)
         if (keys[this.controls.jump] && this.onGround && !this.blocking && !this.isDashing) {
             this.velocityY = -this.jumpPower;
             this.onGround = false;
             this.state = 'jumping';
         }
-
         // Combo attacks
         if (keys[this.controls.attack] && this.attackCooldown === 0 && this.state !== 'special' && !this.blocking) {
             this.performComboAttack();
         }
-
+        // NEW: Special ability selection (use number keys 1-4)
+        for (let i = 1; i <= 4; i++) {
+            if (keys['Digit' + i]) {
+                const powerNames = this.characterClass.specialMoves;
+                if (powerNames[i-1]) {
+                    this.selectedSpecial = powerNames[i-1];
+                }
+            }
+        }
         // Special attacks
         if (keys[this.controls.special]) {
-            const power = Object.values(this.specialPowers)[0];
+            const power = this.specialPowers[this.selectedSpecial];
             if (power && power.canUse(this)) {
                 this.trySpecialAttack = true;
             }
@@ -611,42 +945,36 @@ class StickmanFighter {
     performComboAttack() {
         const currentTime = Date.now();
         const timeSinceLastAttack = currentTime - this.lastAttackTime;
-        
         // Reset combo if too much time has passed
         if (timeSinceLastAttack > 800) {
             this.combo = 0;
             this.comboSequence = [];
         }
-        
         this.combo++;
         this.comboTimer = 1500; // 1.5 seconds to continue combo
         this.lastAttackTime = currentTime;
-        
         // Track max combo
         if (this.combo > this.maxCombo) {
             this.maxCombo = this.combo;
         }
-        
         // Determine attack type based on combo count
         let attackType = 'light';
-        let damage = 15;
+        let damage = 15 * this.characterClass.stats.attackDamage * this.berserkerDamageBoost;
         let duration = 20;
         let cooldown = 30;
-        
         if (this.combo >= 3) {
             attackType = 'heavy';
-            damage = 25;
+            damage = 25 * this.characterClass.stats.attackDamage * this.berserkerDamageBoost;
             duration = 30;
             cooldown = 50;
         } else if (this.combo >= 5) {
             attackType = 'finisher';
-            damage = 35;
+            damage = 35 * this.characterClass.stats.attackDamage * this.berserkerDamageBoost;
             duration = 40;
             cooldown = 60;
             // Add special effects for finisher
             this.createFinisherEffect();
         }
-        
         this.comboSequence.push(attackType);
         this.attacking = true;
         this.attackDuration = duration;
@@ -654,6 +982,8 @@ class StickmanFighter {
         this.hasHit = false;
         this.state = 'attacking';
         this.currentAttackDamage = damage;
+        // NEW: Mark if combo is performed in air
+        this.comboInAir = !this.onGround;
     }
     
     // NEW: Create trail particles for dash
@@ -673,6 +1003,51 @@ class StickmanFighter {
             particle.life--;
             return particle.life > 0;
         });
+    }
+    
+    // NEW: Update class-specific special states
+    updateSpecialStates() {
+        // Berserker Mode (Warrior)
+        if (this.berserkerMode > 0) {
+            this.berserkerMode--;
+            if (this.berserkerMode <= 0) {
+                this.berserkerDamageBoost = 1.0;
+                this.berserkerSpeedBoost = 1.0;
+            }
+        }
+        
+        // Shadow Clones (Assassin)
+        if (this.shadowClones && this.shadowClones.length > 0) {
+            this.shadowClones = this.shadowClones.filter(clone => {
+                clone.life--;
+                clone.attackTimer--;
+                
+                // Clone attacks nearby enemy occasionally
+                if (clone.attackTimer <= 0) {
+                    clone.attackTimer = 60 + Math.random() * 60;
+                    // Attack logic would go here
+                }
+                
+                return clone.life > 0;
+            });
+        }
+        
+        // Mana Shield (Mage)
+        if (this.manaShield > 0) {
+            this.manaShield--;
+        }
+        
+        // Poison effect
+        if (this.poisoned > 0) {
+            this.poisoned--;
+            this.poisonDamageTimer++;
+            
+            // Deal poison damage every 30 frames (0.5 seconds)
+            if (this.poisonDamageTimer >= 30) {
+                this.health -= 2;
+                this.poisonDamageTimer = 0;
+            }
+        }
     }
     
     // NEW: Create finisher effect
@@ -1331,6 +1706,101 @@ class StickmanFighter {
             ctx.restore();
         }
 
+        // NEW: Berserker Mode effect (Warrior)
+        if (this.berserkerMode > 0) {
+            ctx.save();
+            const intensity = Math.sin(Date.now() * 0.01) * 0.5 + 0.5;
+            ctx.strokeStyle = `rgba(255, 0, 0, ${0.7 + intensity * 0.3})`;
+            ctx.lineWidth = 4;
+            ctx.shadowColor = '#FF0000';
+            ctx.shadowBlur = 20;
+            
+            // Red berserker aura
+            const berserkerRect = {
+                x: centerX - 45,
+                y: headY - 25,
+                w: 90,
+                h: this.height + 50
+            };
+            ctx.strokeRect(berserkerRect.x, berserkerRect.y, berserkerRect.w, berserkerRect.h);
+            
+            // Rage particles
+            for (let i = 0; i < 5; i++) {
+                const sparkleX = berserkerRect.x + Math.random() * berserkerRect.w;
+                const sparkleY = berserkerRect.y + Math.random() * berserkerRect.h;
+                ctx.fillStyle = '#FF0000';
+                ctx.beginPath();
+                ctx.arc(sparkleX, sparkleY, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // NEW: Mana Shield effect (Mage)
+        if (this.manaShield > 0) {
+            ctx.save();
+            const shieldAlpha = Math.sin(Date.now() * 0.008) * 0.3 + 0.5;
+            ctx.strokeStyle = `rgba(0, 191, 255, ${shieldAlpha})`;
+            ctx.lineWidth = 6;
+            ctx.shadowColor = '#00BFFF';
+            ctx.shadowBlur = 25;
+            
+            // Blue mana shield
+            const shieldRadius = 50 + Math.sin(Date.now() * 0.01) * 5;
+            ctx.beginPath();
+            ctx.arc(centerX, headY + this.height/2, shieldRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Shield hexagons pattern
+            for (let i = 0; i < 6; i++) {
+                const angle = i * Math.PI / 3 + Date.now() * 0.002;
+                const hexX = centerX + Math.cos(angle) * (shieldRadius - 10);
+                const hexY = headY + this.height/2 + Math.sin(angle) * (shieldRadius - 10);
+                ctx.strokeStyle = `rgba(0, 191, 255, ${shieldAlpha * 0.7})`;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(hexX, hexY, 4, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // NEW: Poison effect
+        if (this.poisoned > 0) {
+            ctx.save();
+            const poisonAlpha = Math.sin(Date.now() * 0.02) * 0.3 + 0.4;
+            ctx.fillStyle = `rgba(0, 255, 0, ${poisonAlpha})`;
+            ctx.shadowColor = '#00FF00';
+            ctx.shadowBlur = 10;
+            
+            // Green poison bubbles
+            for (let i = 0; i < 3; i++) {
+                const bubbleX = centerX + (Math.random() - 0.5) * 60;
+                const bubbleY = headY + Math.random() * this.height;
+                ctx.beginPath();
+                ctx.arc(bubbleX, bubbleY, 3 + Math.random() * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // NEW: Shadow Clones effect (Assassin)
+        if (this.shadowClones && this.shadowClones.length > 0) {
+            ctx.save();
+            this.shadowClones.forEach(clone => {
+                const alpha = clone.life / 120 * 0.5;
+                ctx.globalAlpha = alpha;
+                ctx.strokeStyle = '#9932CC';
+                ctx.lineWidth = 3;
+                ctx.shadowColor = '#9932CC';
+                ctx.shadowBlur = 15;
+                
+                // Draw shadow clone outline
+                ctx.strokeRect(clone.x - 20, clone.y - this.height - 10, 40, this.height + 20);
+            });
+            ctx.restore();
+        }
+
         // Trail particles
         this.trailParticles.forEach(particle => {
             ctx.save();
@@ -1711,7 +2181,7 @@ class StickmanBattleArena {
         // Audio
         this.audioManager = new AudioManager();
 
-        // Create players
+        // Create players with different character classes
         this.player1 = new StickmanFighter(150, this.groundY, '#FF4444', {
             left: 'KeyA',
             right: 'KeyD',
@@ -1720,7 +2190,7 @@ class StickmanBattleArena {
             special: 'KeyQ',
             block: 'KeyF',
             dash: 'KeyE'
-        }, 1);
+        }, 1, 'warrior');
 
         this.player2 = new StickmanFighter(850, this.groundY, '#4444FF', {
             left: 'ArrowLeft',
@@ -1730,7 +2200,7 @@ class StickmanBattleArena {
             special: 'ShiftRight',
             block: 'ControlRight',
             dash: 'Slash'
-        }, -1);
+        }, -1, 'assassin');
 
         // Input handling
         this.keys = {};
@@ -1766,6 +2236,26 @@ class StickmanBattleArena {
             const muted = this.audioManager.toggleMute();
             document.getElementById('muteButton').textContent = muted ? '🔇 Muted' : '🔊 Sound';
         });
+
+        // Character class selection during game
+        document.addEventListener('keydown', (e) => {
+            // Player 1 class selection (Ctrl + 1-4)
+            if (e.ctrlKey && ['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) {
+                const classNames = Object.keys(CHARACTER_CLASSES);
+                const classIndex = parseInt(e.code.replace('Digit', '')) - 1;
+                if (classNames[classIndex]) {
+                    this.changePlayerClass(this.player1, classNames[classIndex]);
+                }
+            }
+            // Player 2 class selection (Alt + 1-4)
+            if (e.altKey && ['Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(e.code)) {
+                const classNames = Object.keys(CHARACTER_CLASSES);
+                const classIndex = parseInt(e.code.replace('Digit', '')) - 1;
+                if (classNames[classIndex]) {
+                    this.changePlayerClass(this.player2, classNames[classIndex]);
+                }
+            }
+        });
     }
 
     update() {
@@ -1787,14 +2277,14 @@ class StickmanBattleArena {
         this.player2.update(this.keys, this.groundY);
 
         // Handle special attacks
+        // NEW: Use selected special ability
         if (this.player1.trySpecialAttack) {
-            const power = Object.values(this.player1.specialPowers)[0];
+            const power = this.player1.specialPowers[this.player1.selectedSpecial];
             power.use(this.player1, this.player2, this);
             this.player1.trySpecialAttack = false;
         }
-
         if (this.player2.trySpecialAttack) {
-            const power = Object.values(this.player2.specialPowers)[0];
+            const power = this.player2.specialPowers[this.player2.selectedSpecial];
             power.use(this.player2, this.player1, this);
             this.player2.trySpecialAttack = false;
         }
@@ -1846,18 +2336,20 @@ class StickmanBattleArena {
             this.handleParry(attacker, target);
             return;
         }
-        
         // Check for block
         if (target.blocking && !target.invulnerable) {
             this.handleBlock(attacker, target);
             return;
         }
-        
         // Check invulnerability frames
         if (target.invulnerable) {
             return;
         }
-        
+        // Enhanced air juggle: if attacker is in air and hits target, reset target's vertical velocity and allow juggle
+        if (attacker.comboInAir && !target.onGround) {
+            target.velocityY = -10; // Launch target up for juggle
+            this.addDamageText(target.x + target.width/2, target.y - target.height, 'JUGGLE!', '#00BFFF');
+        }
         // Normal damage
         const damage = attacker.weapon ? attacker.weapon.damage : (attacker.currentAttackDamage || 20);
         this.dealDamage(attacker, target, damage);
@@ -1895,8 +2387,9 @@ class StickmanBattleArena {
 
     // NEW: Handle blocked attack
     handleBlock(attacker, target) {
-        // Reduced damage through block
-        const blockedDamage = Math.floor((attacker.currentAttackDamage || 20) * 0.3);
+        // Reduced damage through block (factor in defense)
+        const baseDamage = attacker.currentAttackDamage || 20;
+        const blockedDamage = Math.floor(baseDamage * 0.3 / target.characterClass.stats.defense);
         target.health -= blockedDamage;
         target.energy -= 10; // Blocking costs energy
         
@@ -1916,7 +2409,7 @@ class StickmanBattleArena {
             ));
         }
         
-        this.addDamageText(target.x + target.width/2, target.y - target.height, `BLOCKED ${blockedDamage}`, '#00FFFF');
+        this.addDamageText(target.x + target.width/2, target.y - target.height, `BLOCKED ${Math.floor(blockedDamage)}`, '#00FFFF');
         this.addScreenShake(3);
         
         attacker.hasHit = true;
@@ -1934,7 +2427,26 @@ class StickmanBattleArena {
     }
 
     dealDamage(attacker, target, damage) {
-        target.health -= damage;
+        // Apply defense multiplier
+        let finalDamage = damage / target.characterClass.stats.defense;
+        
+        // Handle mana shield (Mage ability)
+        if (target.manaShield > 0 && target.energy > 0) {
+            const energyCost = finalDamage * 1.5; // Mana shield costs more energy than damage prevented
+            if (target.energy >= energyCost) {
+                target.energy -= energyCost;
+                finalDamage *= 0.3; // 70% damage reduction
+                this.addDamageText(target.x + target.width/2, target.y - target.height - 20, 'SHIELD!', '#00BFFF');
+            } else {
+                // Not enough energy, shield breaks
+                finalDamage *= 0.7; // Partial protection
+                target.energy = 0;
+                target.manaShield = 0;
+                this.addDamageText(target.x + target.width/2, target.y - target.height - 20, 'SHIELD BROKEN!', '#FF6600');
+            }
+        }
+        
+        target.health -= finalDamage;
         if (target.health < 0) target.health = 0;
 
         attacker.hasHit = true;
@@ -1949,7 +2461,7 @@ class StickmanBattleArena {
         target.knockbackY = -5;
 
         // Add damage text
-        this.addDamageText(target.x + target.width/2, target.y - target.height, damage);
+        this.addDamageText(target.x + target.width/2, target.y - target.height, Math.floor(finalDamage));
 
         // Add hit particles
         for (let i = 0; i < 8; i++) {
@@ -1980,6 +2492,28 @@ class StickmanBattleArena {
 
     updateProjectiles() {
         this.projectiles = this.projectiles.filter(projectile => {
+            // Handle homing projectiles (Arcane Orb)
+            if (projectile.homing && projectile.target) {
+                const targetX = projectile.target.x + projectile.target.width/2;
+                const targetY = projectile.target.y - projectile.target.height/2;
+                const dx = targetX - projectile.x;
+                const dy = targetY - projectile.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                
+                if (distance > 0) {
+                    const speed = 4;
+                    projectile.vx += (dx / distance) * 0.3;
+                    projectile.vy += (dy / distance) * 0.3;
+                    
+                    // Limit speed
+                    const currentSpeed = Math.sqrt(projectile.vx*projectile.vx + projectile.vy*projectile.vy);
+                    if (currentSpeed > speed) {
+                        projectile.vx = (projectile.vx / currentSpeed) * speed;
+                        projectile.vy = (projectile.vy / currentSpeed) * speed;
+                    }
+                }
+            }
+            
             projectile.x += projectile.vx;
             projectile.y += projectile.vy;
             projectile.life--;
@@ -1992,7 +2526,15 @@ class StickmanBattleArena {
             );
 
             if (distance < projectile.size + 20) {
-                // Hit target
+                // Handle special projectile effects
+                if (projectile.poison) {
+                    // Poison dart effect
+                    target.poisoned = projectile.poisonDuration;
+                    target.poisonDamageTimer = 0;
+                    this.addDamageText(target.x + target.width/2, target.y - target.height - 20, 'POISONED!', '#00FF00');
+                }
+                
+                // Hit target with damage
                 target.health -= projectile.damage;
                 if (target.health < 0) target.health = 0;
 
@@ -2002,21 +2544,32 @@ class StickmanBattleArena {
                 this.audioManager.play('hit');
                 this.addScreenShake(12);
 
-                // Add explosion particles
+                // Add explosion particles with projectile-specific colors
+                const particleColor = projectile.poison ? '#00FF00' : 
+                                    projectile.homing ? '#9966FF' :
+                                    projectile.piercing ? '#FFA500' :
+                                    `hsl(${Math.random() * 60}, 100%, 50%)`;
+                
                 for (let i = 0; i < 15; i++) {
                     this.particles.push(new Particle(
                         projectile.x + (Math.random() - 0.5) * 30,
                         projectile.y + (Math.random() - 0.5) * 30,
                         (Math.random() - 0.5) * 10,
                         (Math.random() - 0.5) * 10,
-                        `hsl(${Math.random() * 60}, 100%, 50%)`,
+                        particleColor,
                         30 + Math.random() * 20,
                         3 + Math.random() * 3
                     ));
                 }
 
                 this.addDamageText(target.x + target.width/2, target.y - target.height, projectile.damage);
-                return false; // Remove projectile
+                
+                // Piercing projectiles don't get removed on hit
+                if (projectile.piercing) {
+                    projectile.damage *= 0.8; // Reduce damage for subsequent hits
+                } else {
+                    return false; // Remove projectile
+                }
             }
 
             // Remove if out of bounds or expired
@@ -2157,6 +2710,29 @@ class StickmanBattleArena {
             p2Combo.style.display = 'none';
         }
 
+        // NEW: Show character class info
+        const classInfo = document.getElementById('classInfo') || this.createClassInfoElement();
+        const p1Effects = [];
+        const p2Effects = [];
+        
+        // Check active effects for Player 1
+        if (this.player1.berserkerMode > 0) p1Effects.push('BERSERKER');
+        if (this.player1.manaShield > 0) p1Effects.push('SHIELD');
+        if (this.player1.poisoned > 0) p1Effects.push('POISONED');
+        if (this.player1.shadowClones && this.player1.shadowClones.length > 0) p1Effects.push('CLONES');
+        
+        // Check active effects for Player 2
+        if (this.player2.berserkerMode > 0) p2Effects.push('BERSERKER');
+        if (this.player2.manaShield > 0) p2Effects.push('SHIELD');
+        if (this.player2.poisoned > 0) p2Effects.push('POISONED');
+        if (this.player2.shadowClones && this.player2.shadowClones.length > 0) p2Effects.push('CLONES');
+        
+        classInfo.innerHTML = `
+            <div style="color: #FF4444;">P1: ${this.player1.characterClass.name} ${p1Effects.length ? `(${p1Effects.join(', ')})` : ''}</div>
+            <div style="color: #4444FF;">P2: ${this.player2.characterClass.name} ${p2Effects.length ? `(${p2Effects.join(', ')})` : ''}</div>
+        `;
+        classInfo.style.display = 'block';
+
         // NEW: Show weapon info if available
         const weaponInfo = document.getElementById('weaponInfo');
         const activeWeapons = [];
@@ -2169,6 +2745,25 @@ class StickmanBattleArena {
         } else {
             weaponInfo.style.display = 'none';
         }
+    }
+
+    createClassInfoElement() {
+        const classInfo = document.createElement('div');
+        classInfo.id = 'classInfo';
+        classInfo.style.cssText = `
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-family: Orbitron, monospace;
+            font-size: 14px;
+            text-align: right;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        `;
+        document.body.appendChild(classInfo);
+        return classInfo;
     }
 
     checkGameOver() {
@@ -2240,6 +2835,36 @@ class StickmanBattleArena {
         };
 
         document.getElementById('gameOver').classList.add('hidden');
+    }
+
+    // NEW: Change player character class
+    changePlayerClass(player, className) {
+        const oldHealth = player.health;
+        const oldEnergy = player.energy;
+        const healthPercent = oldHealth / player.maxHealth;
+        const energyPercent = oldEnergy / player.maxEnergy;
+        
+        // Update character class
+        player.characterClass = CHARACTER_CLASSES[className];
+        player.classType = className;
+        
+        // Update stats
+        player.speed = player.characterClass.stats.speed;
+        player.jumpPower = player.characterClass.stats.jumpPower;
+        player.energyRegenRate = player.characterClass.stats.energyRegenRate;
+        
+        // Maintain health and energy percentages
+        player.maxHealth = player.characterClass.stats.health;
+        player.maxEnergy = player.characterClass.stats.energy;
+        player.health = Math.min(player.maxHealth, healthPercent * player.maxHealth);
+        player.energy = Math.min(player.maxEnergy, energyPercent * player.maxEnergy);
+        
+        // Update special powers
+        player.selectedSpecial = player.characterClass.specialMoves[0];
+        
+        // Visual feedback
+        this.addDamageText(player.x + player.width/2, player.y - player.height, 
+            `${player.characterClass.name.toUpperCase()}!`, '#FFD700');
     }
 
     render() {
@@ -2335,19 +2960,90 @@ class StickmanBattleArena {
             this.ctx.save();
             this.ctx.globalAlpha = projectile.life / projectile.maxLife;
             
-            // Draw fireball
-            const gradient = this.ctx.createRadialGradient(
-                projectile.x, projectile.y, 0,
-                projectile.x, projectile.y, projectile.size
-            );
-            gradient.addColorStop(0, '#FFFF00');
-            gradient.addColorStop(0.5, '#FF8800');
-            gradient.addColorStop(1, '#FF0000');
-            
-            this.ctx.fillStyle = gradient;
-            this.ctx.beginPath();
-            this.ctx.arc(projectile.x, projectile.y, projectile.size, 0, Math.PI * 2);
-            this.ctx.fill();
+            if (projectile.poison) {
+                // Poison dart - green and smaller
+                const gradient = this.ctx.createRadialGradient(
+                    projectile.x, projectile.y, 0,
+                    projectile.x, projectile.y, projectile.size
+                );
+                gradient.addColorStop(0, '#00FF00');
+                gradient.addColorStop(0.5, '#008800');
+                gradient.addColorStop(1, '#004400');
+                this.ctx.fillStyle = gradient;
+                
+                // Draw dart shape
+                this.ctx.beginPath();
+                this.ctx.ellipse(projectile.x, projectile.y, projectile.size, projectile.size * 0.3, 
+                               Math.atan2(projectile.vy, projectile.vx), 0, Math.PI * 2);
+                this.ctx.fill();
+                
+            } else if (projectile.homing) {
+                // Arcane orb - purple and swirling
+                const gradient = this.ctx.createRadialGradient(
+                    projectile.x, projectile.y, 0,
+                    projectile.x, projectile.y, projectile.size
+                );
+                gradient.addColorStop(0, '#FFFFFF');
+                gradient.addColorStop(0.3, '#9966FF');
+                gradient.addColorStop(0.7, '#6633CC');
+                gradient.addColorStop(1, '#330099');
+                this.ctx.fillStyle = gradient;
+                
+                // Draw swirling orb
+                this.ctx.beginPath();
+                this.ctx.arc(projectile.x, projectile.y, projectile.size, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Add magical sparkles
+                const time = Date.now() * 0.01;
+                for (let i = 0; i < 3; i++) {
+                    const angle = time + i * Math.PI * 2 / 3;
+                    const sparkleX = projectile.x + Math.cos(angle) * projectile.size * 0.7;
+                    const sparkleY = projectile.y + Math.sin(angle) * projectile.size * 0.7;
+                    this.ctx.fillStyle = '#FFFFFF';
+                    this.ctx.beginPath();
+                    this.ctx.arc(sparkleX, sparkleY, 2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+                
+            } else if (projectile.piercing) {
+                // Chi blast - orange energy wave
+                const gradient = this.ctx.createRadialGradient(
+                    projectile.x, projectile.y, 0,
+                    projectile.x, projectile.y, projectile.size
+                );
+                gradient.addColorStop(0, '#FFCC00');
+                gradient.addColorStop(0.5, '#FF9900');
+                gradient.addColorStop(1, '#FF6600');
+                this.ctx.fillStyle = gradient;
+                
+                // Draw energy wave
+                this.ctx.beginPath();
+                this.ctx.arc(projectile.x, projectile.y, projectile.size, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Add energy trails
+                this.ctx.strokeStyle = '#FFA500';
+                this.ctx.lineWidth = 3;
+                this.ctx.beginPath();
+                this.ctx.arc(projectile.x, projectile.y, projectile.size + 5, 0, Math.PI * 2);
+                this.ctx.stroke();
+                
+            } else {
+                // Regular fireball
+                const gradient = this.ctx.createRadialGradient(
+                    projectile.x, projectile.y, 0,
+                    projectile.x, projectile.y, projectile.size
+                );
+                gradient.addColorStop(0, '#FFFF00');
+                gradient.addColorStop(0.5, '#FF8800');
+                gradient.addColorStop(1, '#FF0000');
+                
+                this.ctx.fillStyle = gradient;
+                this.ctx.beginPath();
+                this.ctx.arc(projectile.x, projectile.y, projectile.size, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
             
             this.ctx.restore();
         });
