@@ -179,10 +179,13 @@ const CHARACTER_CLASSES = {
 // STICKMAN FIGHTER CLASS
 // ================================
 class StickmanFighter {
-    constructor(x, y, color, controls, facingDirection = 1, characterClass = 'monk') {
+    constructor(x, y, color, controls, facingDirection = 1, characterClass = 'monk', gameRef = null) {
         // Character class setup
         this.characterClass = CHARACTER_CLASSES[characterClass];
         this.classType = characterClass;
+        
+        // Game reference for weapon dropping
+        this.currentGame = gameRef;
         
         // Position and physics
         this.x = x;
@@ -234,6 +237,7 @@ class StickmanFighter {
         // NEW: Weapon system
         this.weapon = null;
         this.weaponPickupRadius = 30;
+        this.nearbyWeapon = false;
 
         // Animation state
         this.animationFrame = 0;
@@ -786,6 +790,23 @@ class StickmanFighter {
             this.parryWindow = 200; // 200ms parry window
         }
         this.wasBlocking = keys[this.controls.block];
+        
+        // NEW: Drop weapon by pressing block + pickup
+        if (keys[this.controls.block] && keys[this.controls.pickup] && this.weapon) {
+            // Create a new weapon at the player's position
+            const droppedWeapon = new Weapon(
+                this.x + this.width/2 + this.facing * 20, 
+                this.y - 20, 
+                this.weapon.type
+            );
+            
+            // Add weapon back to the game's weapon array
+            this.currentGame.weapons.push(droppedWeapon);
+            
+            // Clear player's weapon
+            this.weapon = null;
+        }
+        
         // Dashing
         if (keys[this.controls.dash] && this.dashCooldown <= 0 && !this.isDashing && this.energy >= 20) {
             this.isDashing = true;
@@ -851,28 +872,35 @@ class StickmanFighter {
     }
 
     updatePhysics(groundY) {
-        // Enhanced gravity with variable strength
+        // Improved gravity with faster falling (reduced floatiness)
         if (!this.onGround) {
-            this.velocityY += 0.8;
+            // Even stronger gravity for faster falling
+            this.velocityY += 1.5;
+            
+            // Terminal velocity to limit maximum falling speed
+            if (this.velocityY > 20) {
+                this.velocityY = 20;
+            }
         }
 
-        // Apply knockback with smoother decay
+        // Apply knockback with faster decay (reduced air time)
         this.velocityX += this.knockbackX;
-        this.velocityY += this.knockbackY;
-        this.knockbackX *= 0.85; // Smoother knockback decay
-        this.knockbackY *= 0.85;
+        this.velocityY += this.knockbackY * 0.6; // Further reduced vertical knockback
+        this.knockbackX *= 0.7; // Even faster knockback decay
+        this.knockbackY *= 0.7; // Even faster knockback decay
 
-        // Update position with sub-pixel precision
-        this.x += this.velocityX;
-        this.y += this.velocityY;
+        // Update position with optimized precision (better performance)
+        const oldX = this.x;
+        this.x += Math.round(this.velocityX * 10) / 10; // Round to 1 decimal place
+        this.y += Math.round(this.velocityY * 10) / 10; // Round to 1 decimal place
 
         // Enhanced movement with momentum and friction
         if (this.onGround) {
             // Ground friction with easing - different for different states
             if (this.state === 'idle' || this.state === 'blocking') {
-                this.velocityX *= 0.78; // Faster stopping when idle/blocking
+                this.velocityX *= 0.75; // Even faster stopping when idle/blocking
             } else {
-                this.velocityX *= 0.85; // Normal friction
+                this.velocityX *= 0.82; // Improved normal friction
             }
         } else {
             // Air resistance
@@ -880,16 +908,32 @@ class StickmanFighter {
         }
 
         // Smoother velocity clamping
-        const maxSpeed = this.isDashing ? 20 : 12;
+        const maxSpeed = this.isDashing ? 22 : 14;
         if (Math.abs(this.velocityX) > maxSpeed) {
             this.velocityX = Math.sign(this.velocityX) * maxSpeed;
         }
 
-        // Enhanced ground collision with bounce dampening
+        // Enhanced ground collision with bounce dampening and landing effect
         if (this.y >= groundY) {
             this.y = groundY;
             if (this.velocityY > 0) {
                 this.velocityY = 0;
+                
+                // Add landing effect if falling from a significant height
+                if (!this.wasOnGround && Math.abs(this.velocityY) > 8) {
+                    // Landing dust particles
+                    for (let i = 0; i < 8; i++) {
+                        this.particles.push({
+                            x: this.x + this.width / 2 + (Math.random() - 0.5) * 20,
+                            y: groundY,
+                            vx: (Math.random() - 0.5) * 3,
+                            vy: -Math.random() * 2 - 1,
+                            size: Math.random() * 4 + 2,
+                            color: '#DDD',
+                            life: 15
+                        });
+                    }
+                }
             }
             this.onGround = true;
             if (this.state === 'jumping') {
@@ -1066,18 +1110,55 @@ class StickmanFighter {
         }
     }
     
-    // NEW: Check for weapon pickup
-    checkWeaponPickup(weapons) {
-        weapons.forEach((weapon, index) => {
+    // Check if a weapon is in pickup range (without picking it up)
+    checkNearbyWeapons(weapons) {
+        this.nearbyWeapon = false;
+        
+        for (const weapon of weapons) {
             const dx = weapon.x - (this.x + this.width / 2);
             const dy = weapon.y - (this.y + this.height / 2);
             const distance = Math.sqrt(dx * dx + dy * dy);
             
             if (distance < this.weaponPickupRadius) {
-                this.weapon = weapon;
-                weapons.splice(index, 1);
+                this.nearbyWeapon = true;
+                break;
             }
-        });
+        }
+    }
+
+    // Check for weapon pickup (now requires pickup button)
+    checkWeaponPickup(weapons, keys) {
+        if (this.weapon) return; // Already holding a weapon
+        
+        for (let i = 0; i < weapons.length; i++) {
+            const weapon = weapons[i];
+            const dx = weapon.x - (this.x + this.width / 2);
+            const dy = weapon.y - (this.y + this.height / 2);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Pickup only when button is pressed and in range
+            if (distance < this.weaponPickupRadius && keys[this.controls.pickup]) {
+                this.weapon = weapon;
+                weapons.splice(i, 1);
+                
+                // Add a small pickup visual effect
+                for (let j = 0; j < 10; j++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 2 + 1;
+                    const size = Math.random() * 4 + 2;
+                    this.particles.push({
+                        x: this.x + this.width / 2,
+                        y: this.y + this.height / 2,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed - 2,
+                        size: size,
+                        color: '#FFD700',
+                        life: 20
+                    });
+                }
+                break;
+            }
+        }
     }
 
     draw(ctx) {
@@ -1317,6 +1398,11 @@ class StickmanFighter {
 
         // Reset shadow for next draws
         ctx.shadowBlur = 0;
+        
+        // Draw weapon in hand if character has one
+        if (this.weapon) {
+            this.drawWeaponInHand(ctx, centerX, headY, shoulderY, armY);
+        }
 
         // Special effects
         if (this.state === 'special') {
@@ -1327,154 +1413,89 @@ class StickmanFighter {
         this.drawStatusBars(ctx, centerX);
     }
 
-    // NEW: Advanced arm drawing with realistic joints and movement
-    drawAdvancedArms(ctx, centerX, shoulderY, armY) {
-        const shoulderWidth = 22;
+    // Draw weapon in the character's hand
+    drawWeapon(ctx, centerX, shoulderY, armY) {
+        if (!this.weapon) return;
         
-        if (this.state === 'attacking' || this.state === 'special') {
-            // Dynamic attack pose with realistic joint movement
-            const attackIntensity = Math.sin(this.animationTimer * 8) * 4;
-            const punchArm = this.facing === 1 ? 'right' : 'left';
-            
-            if (punchArm === 'right') {
-                // Punching right arm with elbow joint
-                const shoulderX = centerX + shoulderWidth;
-                const elbowX = centerX + 28 + attackIntensity;
-                const elbowY = armY + 8;
-                const fistX = centerX + (this.facing * 45) + attackIntensity;
-                const fistY = armY - 8;
-                
-                ctx.beginPath();
-                ctx.moveTo(shoulderX, shoulderY);
-                ctx.lineTo(elbowX, elbowY);
-                ctx.lineTo(fistX, fistY);
-                ctx.stroke();
-                
-                // Elbow joint
-                ctx.fillStyle = ctx.strokeStyle;
-                ctx.beginPath();
-                ctx.arc(elbowX, elbowY, 3, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Supporting left arm
-                ctx.beginPath();
-                ctx.moveTo(centerX - shoulderWidth, shoulderY);
-                ctx.lineTo(centerX - 22, armY + 12);
-                ctx.lineTo(centerX - 18, armY + 25);
-                ctx.stroke();
-            } else {
-                // Mirror for left punch
-                const shoulderX = centerX - shoulderWidth;
-                const elbowX = centerX - 28 - attackIntensity;
-                const elbowY = armY + 8;
-                const fistX = centerX + (this.facing * 45) - attackIntensity;
-                const fistY = armY - 8;
-                
-                ctx.beginPath();
-                ctx.moveTo(shoulderX, shoulderY);
-                ctx.lineTo(elbowX, elbowY);
-                ctx.lineTo(fistX, fistY);
-                ctx.stroke();
-                
-                // Elbow joint
-                ctx.fillStyle = ctx.strokeStyle;
-                ctx.beginPath();
-                ctx.arc(elbowX, elbowY, 3, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Supporting right arm
-                ctx.beginPath();
-                ctx.moveTo(centerX + shoulderWidth, shoulderY);
-                ctx.lineTo(centerX + 22, armY + 12);
-                ctx.lineTo(centerX + 18, armY + 25);
-                ctx.stroke();
-            }
+        // Get weapon position based on character state and facing direction
+        let weaponX, weaponY, weaponRotation;
+        const isAttacking = this.state === 'attacking' || this.state === 'special';
+        const attackIntensity = isAttacking ? Math.sin(this.animationTimer * 8) * 4 : 0;
+        
+        // Different weapon positions based on character state
+        if (isAttacking) {
+            // Position during attack
+            weaponX = centerX + this.facing * (35 + attackIntensity);
+            weaponY = armY - 5;
+            weaponRotation = this.facing === 1 ? Math.PI / 4 : -Math.PI / 4;
         } else if (this.state === 'running') {
-            // Natural running arm animation with realistic swing
-            const leftArmSwing = this.armSwing;
-            const rightArmSwing = -this.armSwing;
-            
-            // Left arm
-            const leftShoulderX = centerX - shoulderWidth;
-            const leftElbowX = centerX - 18 + leftArmSwing * 0.6;
-            const leftElbowY = armY + 10;
-            const leftHandX = centerX - 15 + leftArmSwing;
-            const leftHandY = armY + 28;
-            
-            ctx.beginPath();
-            ctx.moveTo(leftShoulderX, shoulderY);
-            ctx.lineTo(leftElbowX, leftElbowY);
-            ctx.lineTo(leftHandX, leftHandY);
-            ctx.stroke();
-            
-            // Right arm
-            const rightShoulderX = centerX + shoulderWidth;
-            const rightElbowX = centerX + 18 + rightArmSwing * 0.6;
-            const rightElbowY = armY + 10;
-            const rightHandX = centerX + 15 + rightArmSwing;
-            const rightHandY = armY + 28;
-            
-            ctx.beginPath();
-            ctx.moveTo(rightShoulderX, shoulderY);
-            ctx.lineTo(rightElbowX, rightElbowY);
-            ctx.lineTo(rightHandX, rightHandY);
-            ctx.stroke();
-            
-            // Elbow joints
-            ctx.fillStyle = ctx.strokeStyle;
-            ctx.beginPath();
-            ctx.arc(leftElbowX, leftElbowY, 3, 0, Math.PI * 2);
-            ctx.arc(rightElbowX, rightElbowY, 3, 0, Math.PI * 2);
-            ctx.fill();
-            
-        } else if (this.state === 'jumping') {
-            // Jumping pose with arms up
-            ctx.beginPath();
-            ctx.moveTo(centerX - shoulderWidth, shoulderY);
-            ctx.lineTo(centerX - 28, armY - 5);
-            ctx.lineTo(centerX - 25, armY - 18);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX + shoulderWidth, shoulderY);
-            ctx.lineTo(centerX + 28, armY - 5);
-            ctx.lineTo(centerX + 25, armY - 18);
-            ctx.stroke();
-            
-        } else if (this.state === 'blocking') {
-            // Defensive pose
-            const guardX = centerX + this.facing * 20;
-            const guardY = armY - 5;
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX + this.facing * shoulderWidth, shoulderY);
-            ctx.lineTo(guardX, guardY);
-            ctx.lineTo(guardX + this.facing * 8, guardY - 8);
-            ctx.stroke();
-            
-            // Supporting arm
-            ctx.beginPath();
-            ctx.moveTo(centerX - this.facing * shoulderWidth, shoulderY);
-            ctx.lineTo(centerX - this.facing * 18, armY + 15);
-            ctx.lineTo(centerX - this.facing * 15, armY + 25);
-            ctx.stroke();
-            
+            // Position during running
+            weaponX = centerX + this.facing * 25;
+            weaponY = armY + 10 + Math.sin(this.animationFrame * 3) * 2;
+            weaponRotation = this.facing === 1 ? Math.PI / 6 : -Math.PI / 6;
         } else {
-            // Idle arms with subtle breathing movement
-            const breathOffset = this.breathingOffset;
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX - shoulderWidth, shoulderY);
-            ctx.lineTo(centerX - 20 + breathOffset, armY + 12);
-            ctx.lineTo(centerX - 18 + breathOffset, armY + 26);
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(centerX + shoulderWidth, shoulderY);
-            ctx.lineTo(centerX + 20 - breathOffset, armY + 12);
-            ctx.lineTo(centerX + 18 - breathOffset, armY + 26);
-            ctx.stroke();
+            // Default idle position
+            weaponX = centerX + this.facing * 20;
+            weaponY = armY + 15;
+            weaponRotation = this.facing === 1 ? Math.PI / 8 : -Math.PI / 8;
         }
+        
+        ctx.save();
+        ctx.translate(weaponX, weaponY);
+        ctx.rotate(weaponRotation);
+        
+        // Draw the weapon with glow effect
+        ctx.shadowColor = this.weapon.color;
+        ctx.shadowBlur = 8;
+        ctx.strokeStyle = this.weapon.color;
+        ctx.fillStyle = this.weapon.color;
+        ctx.lineWidth = 3;
+        
+        // Draw different weapon types
+        switch(this.weapon.type) {
+            case 'sword':
+                // Draw sword
+                ctx.beginPath();
+                ctx.moveTo(0, -20);
+                ctx.lineTo(0, 15);
+                ctx.stroke();
+                
+                // Sword handle
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(-8, 15);
+                ctx.lineTo(8, 15);
+                ctx.stroke();
+                
+                // Sword blade
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.moveTo(-3, -18);
+                ctx.lineTo(3, -18);
+                ctx.lineTo(1, -5);
+                ctx.lineTo(-1, -5);
+                ctx.closePath();
+                ctx.fill();
+                break;
+                
+            case 'spear':
+                // Draw spear
+                ctx.beginPath();
+                ctx.moveTo(0, -25);
+                ctx.lineTo(0, 20);
+                ctx.stroke();
+                
+                // Spearhead
+                ctx.beginPath();
+                ctx.moveTo(-5, -15);
+                ctx.lineTo(0, -25);
+                ctx.lineTo(5, -15);
+                ctx.closePath();
+                ctx.fill();
+                break;
+        }
+        
+        ctx.restore();
     }
 
     // NEW: Advanced leg drawing with realistic joints and movement
@@ -1644,6 +1665,30 @@ class StickmanFighter {
             ctx.moveTo(centerX + 16, groundY);
             ctx.lineTo(centerX + 25, groundY);
             ctx.stroke();
+        }
+        
+        // Draw pickup indicator when a weapon is nearby
+        if (this.nearbyWeapon) {
+            const indicatorY = this.y - this.height - 25;
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.7)';
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.9)';
+            ctx.lineWidth = 2;
+            
+            // Draw pickup key hint
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(this.controls.pickup.replace('Key', ''), centerX, indicatorY);
+            
+            // Draw indicator arrow
+            ctx.beginPath();
+            ctx.moveTo(centerX, indicatorY + 5);
+            ctx.lineTo(centerX - 8, indicatorY + 15);
+            ctx.lineTo(centerX + 8, indicatorY + 15);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
         }
     }
 
@@ -2018,6 +2063,91 @@ class StickmanFighter {
         ctx.strokeRect(centerX - barWidth/2, barY, barWidth, barHeight);
         ctx.strokeRect(centerX - barWidth/2, energyY, barWidth, barHeight);
     }
+    
+    // Draw weapon in the character's hand
+    drawWeaponInHand(ctx, centerX, headY, shoulderY, armY) {
+        if (!this.weapon) return;
+        
+        // Get weapon position based on character state and facing direction
+        let weaponX, weaponY, weaponRotation;
+        const isAttacking = this.state === 'attacking' || this.state === 'special';
+        const attackIntensity = isAttacking ? Math.sin(this.animationFrame * 5) * 5 : 0;
+        
+        // Different weapon positions based on character state
+        if (isAttacking) {
+            // Position during attack
+            weaponX = centerX + this.facing * (35 + attackIntensity);
+            weaponY = armY - 5;
+            weaponRotation = this.facing === 1 ? Math.PI / 4 : -Math.PI / 4;
+        } else if (this.state === 'running') {
+            // Position during running
+            weaponX = centerX + this.facing * 25;
+            weaponY = armY + 10 + Math.sin(this.animationFrame * 3) * 2;
+            weaponRotation = this.facing === 1 ? Math.PI / 6 : -Math.PI / 6;
+        } else {
+            // Default idle position
+            weaponX = centerX + this.facing * 20;
+            weaponY = armY + 15;
+            weaponRotation = this.facing === 1 ? Math.PI / 8 : -Math.PI / 8;
+        }
+        
+        ctx.save();
+        ctx.translate(weaponX, weaponY);
+        ctx.rotate(weaponRotation * this.facing);
+        
+        // Draw the weapon with glow effect
+        ctx.shadowColor = this.weapon.color;
+        ctx.shadowBlur = 8;
+        ctx.strokeStyle = this.weapon.color;
+        ctx.fillStyle = this.weapon.color;
+        ctx.lineWidth = 3;
+        
+        // Draw different weapon types
+        switch(this.weapon.type) {
+            case 'sword':
+                // Draw sword
+                ctx.beginPath();
+                ctx.moveTo(0, -20);
+                ctx.lineTo(0, 15);
+                ctx.stroke();
+                
+                // Sword handle
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(-8, 15);
+                ctx.lineTo(8, 15);
+                ctx.stroke();
+                
+                // Sword blade
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.moveTo(-3, -18);
+                ctx.lineTo(3, -18);
+                ctx.lineTo(1, -5);
+                ctx.lineTo(-1, -5);
+                ctx.closePath();
+                ctx.fill();
+                break;
+                
+            case 'spear':
+                // Draw spear
+                ctx.beginPath();
+                ctx.moveTo(0, -25);
+                ctx.lineTo(0, 20);
+                ctx.stroke();
+                
+                // Spearhead
+                ctx.beginPath();
+                ctx.moveTo(-5, -15);
+                ctx.lineTo(0, -25);
+                ctx.lineTo(5, -15);
+                ctx.closePath();
+                ctx.fill();
+                break;
+        }
+        
+        ctx.restore();
+    }
 }
 
 // ================================
@@ -2189,8 +2319,9 @@ class StickmanBattleArena {
             attack: 'KeyS',
             special: 'KeyQ',
             block: 'KeyF',
-            dash: 'KeyE'
-        }, 1, 'warrior');
+            dash: 'KeyE',
+            pickup: 'KeyR'
+        }, 1, 'warrior', this);
 
         this.player2 = new StickmanFighter(850, this.groundY, '#4444FF', {
             left: 'ArrowLeft',
@@ -2199,8 +2330,9 @@ class StickmanBattleArena {
             attack: 'ArrowDown',
             special: 'ShiftRight',
             block: 'ControlRight',
-            dash: 'Slash'
-        }, -1, 'assassin');
+            dash: 'Slash',
+            pickup: 'Enter'
+        }, -1, 'assassin', this);
 
         // Input handling
         this.keys = {};
@@ -2456,9 +2588,9 @@ class StickmanBattleArena {
         target.hitFlash = 1.0;
         target.invulnerabilityFrames = 10; // Brief invincibility after hit
 
-        // Add knockback
-        target.knockbackX = attacker.facing * 8;
-        target.knockbackY = -5;
+        // Add knockback with reduced air time
+        target.knockbackX = attacker.facing * 6; // Reduced horizontal knockback
+        target.knockbackY = target.onGround ? -3 : -1; // Much less vertical knockback, especially in air
 
         // Add damage text
         this.addDamageText(target.x + target.width/2, target.y - target.height, Math.floor(finalDamage));
@@ -2605,9 +2737,13 @@ class StickmanBattleArena {
         // Update existing weapons
         this.weapons.forEach(weapon => weapon.update());
         
-        // Check weapon pickups
-        this.player1.checkWeaponPickup(this.weapons);
-        this.player2.checkWeaponPickup(this.weapons);
+        // Check for nearby weapons (for indicator)
+        this.player1.checkNearbyWeapons(this.weapons);
+        this.player2.checkNearbyWeapons(this.weapons);
+        
+        // Check weapon pickups (now requires button press)
+        this.player1.checkWeaponPickup(this.weapons, this.keys);
+        this.player2.checkWeaponPickup(this.weapons, this.keys);
     }
 
     // NEW: Spawn random weapon
@@ -2631,22 +2767,32 @@ class StickmanBattleArena {
         
         // Target camera position (centered on action)
         this.targetCameraX = midX - this.canvas.width / 2;
-        this.targetCameraY = midY - this.canvas.height / 2 - 50; // Slightly higher view
         
-        // Smooth camera interpolation
-        const cameraSpeed = 0.08;
-        this.cameraX += (this.targetCameraX - this.cameraX) * cameraSpeed;
-        this.cameraY += (this.targetCameraY - this.cameraY) * cameraSpeed;
+        // Keep camera at a stable height to reduce bouncing
+        const stableY = this.groundY - 260; // Fixed height above ground
+        this.targetCameraY = stableY; // No vertical tracking
+        
+        // Much slower camera interpolation for stability
+        const horizontalCameraSpeed = 0.03; // Slower horizontal movement
+        const verticalCameraSpeed = 0.015; // Even slower vertical movement
+        
+        // Apply damping to reduce oscillation
+        this.cameraX += (this.targetCameraX - this.cameraX) * horizontalCameraSpeed;
+        this.cameraY += (this.targetCameraY - this.cameraY) * verticalCameraSpeed;
+        
+        // Round camera position to reduce micro-jitters
+        this.cameraX = Math.round(this.cameraX * 10) / 10;
+        this.cameraY = Math.round(this.cameraY * 10) / 10;
         
         // Camera bounds to keep action in view
         this.cameraX = Math.max(-200, Math.min(200, this.cameraX));
         this.cameraY = Math.max(-100, Math.min(50, this.cameraY));
         
-        // Camera shake
+        // Reduced camera shake
         if (this.cameraShake > 0) {
-            this.cameraShakeX = (Math.random() - 0.5) * this.cameraShake;
-            this.cameraShakeY = (Math.random() - 0.5) * this.cameraShake;
-            this.cameraShake *= 0.9; // Decay shake
+            this.cameraShakeX = (Math.random() - 0.5) * (this.cameraShake * 0.7); // Reduced shake
+            this.cameraShakeY = (Math.random() - 0.5) * (this.cameraShake * 0.5); // Even less vertical shake
+            this.cameraShake *= 0.8; // Faster decay
         } else {
             this.cameraShakeX = 0;
             this.cameraShakeY = 0;
